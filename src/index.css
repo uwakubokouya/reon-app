@@ -1,0 +1,11 @@
+html, body, #root {
+  width: 100% !important;       /* 画面幅ぴったり */
+  min-width: 0 !important;      /* はみ出し防止 */
+  overflow-x: hidden !important;/* 横スクロール禁止 */
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+* {
+  box-sizing: border-box;
+}
