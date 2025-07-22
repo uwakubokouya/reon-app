@@ -2,11 +2,10 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig({
-  root: 'src',
-  base: './', // ここを追加
+  root: 'src',  // ここでsrcをrootに指定
   build: {
-    outDir: '../dist',
+    outDir: '../dist', // ビルド成果物の出力先
     emptyOutDir: true,
   },
-  plugins: [react()],
+  plugins: [react()]
 });
