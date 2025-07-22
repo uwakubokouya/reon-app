@@ -5,13 +5,16 @@
   "description": "My Electron application description",
   "main": ".webpack/main",
   "scripts": {
-    "start": "electron-forge start",
-    "package": "electron-forge package",
-    "make": "electron-forge make",
-    "publish": "electron-forge publish",
-    "lint": "echo \"No linting configured\"",
-    "build:web": "webpack --config .webpack/webpack.renderer.config.js"
-  },
+  "start": "electron-forge start",
+  "package": "electron-forge package",
+  "make": "electron-forge make",
+  "publish": "electron-forge publish",
+  "lint": "echo \"No linting configured\"",
+  "build:web": "webpack --config .webpack/webpack.renderer.config.js",
+  "dev": "vite",
+  "build": "vite build",
+  "preview": "vite preview"
+},
   "keywords": [],
   "author": {
     "name": "guang",
@@ -37,6 +40,7 @@
     "electron": "36.2.1",
     "node-loader": "^2.1.0",
     "style-loader": "^3.3.4",
+    "vite": "^7.0.5",
     "webpack-cli": "^6.0.1"
   },
   "dependencies": {
