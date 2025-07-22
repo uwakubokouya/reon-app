@@ -9,7 +9,8 @@
     "package": "electron-forge package",
     "make": "electron-forge make",
     "publish": "electron-forge publish",
-    "lint": "echo \"No linting configured\""
+    "lint": "echo \"No linting configured\"",
+    "build:web": "webpack --config .webpack/webpack.renderer.config.js"
   },
   "keywords": [],
   "author": {
@@ -35,7 +36,8 @@
     "css-loader": "^6.11.0",
     "electron": "36.2.1",
     "node-loader": "^2.1.0",
-    "style-loader": "^3.3.4"
+    "style-loader": "^3.3.4",
+    "webpack-cli": "^6.0.1"
   },
   "dependencies": {
     "@date-io/date-fns": "^3.2.1",
