@@ -38,20 +38,28 @@
     "style-loader": "^3.3.4"
   },
   "dependencies": {
+    "@date-io/date-fns": "^3.2.1",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.0",
-    "@mui/icons-material": "^7.1.0",
-    "@mui/material": "^7.1.0",
-    "@mui/x-date-pickers": "^8.4.0",
+    "@mui/icons-material": "^7.1.1",
+    "@mui/lab": "^7.0.0-beta.12",
+    "@mui/material": "^7.1.1",
+    "@mui/x-date-pickers": "^8.6.0",
+    "@mui/x-date-pickers-pro": "^8.5.3",
+    "@supabase/supabase-js": "^2.52.0",
     "axios": "^1.9.0",
+    "date-fns": "^4.1.0",
     "dayjs": "^1.11.13",
     "electron-squirrel-startup": "^1.0.1",
+    "node-fetch": "^2.7.0",
     "openai": "^4.100.0",
     "papaparse": "^5.5.3",
     "react": "^19.1.0",
+    "react-animated-weather": "^4.0.1",
     "react-dom": "^19.1.0",
     "react-grid-layout": "^1.5.1",
     "react-resizable": "^3.0.5",
-    "recharts": "^2.15.3"
+    "react-router-dom": "^7.6.2",
+    "recharts": "^2.15.4"
   }
 }

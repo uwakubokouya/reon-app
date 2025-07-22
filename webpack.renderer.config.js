@@ -1,12 +1,15 @@
 const rules = require('./webpack.rules');
 
-// 既存のCSSルールはそのまま
+// --- 1. CSSローダー ---
 rules.push({
   test: /\.css$/,
-  use: [{ loader: 'style-loader' }, { loader: 'css-loader' }],
+  use: [
+    { loader: 'style-loader' },
+    { loader: 'css-loader' }
+  ]
 });
 
-// ここにReact(JSX)用のBabelローダー設定を追加
+// --- 2. React(JSX) + Babel ローダー ---
 rules.push({
   test: /\.(js|jsx)$/,
   exclude: /node_modules/,
@@ -28,4 +31,14 @@ module.exports = {
   resolve: {
     extensions: ['.js', '.jsx'],
   },
+  // --- 3. FastAPIサーバへのAPIリクエストをローカルにプロキシ ---
+  devServer: {
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        secure: false,
+      }
+    }
+  }
 };

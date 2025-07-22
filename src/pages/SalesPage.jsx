@@ -1,567 +1,525 @@
-import React, { useState } from "react";
-import GridLayout from "react-grid-layout";
-import "react-grid-layout/css/styles.css";
-import "react-resizable/css/styles.css";
+import React, { useState, useEffect, useMemo } from "react";
+import { supabase } from "../lib/supabase";
 import {
-  Box, Paper, Typography, Card, CardContent, LinearProgress, Button, Tabs, Tab, Divider
+  Box, Paper, Typography, Card, LinearProgress, Tabs, Tab, Divider, Avatar,
+  Select, MenuItem, FormControl, InputLabel, CircularProgress
 } from "@mui/material";
 import {
-  Search, ArrowUpward, ArrowDownward, Timeline
+  Timeline, Favorite, CreditCard, LocalOffer, EmojiEvents, TrendingUp
 } from "@mui/icons-material";
+import {
+  LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend,
+  BarChart, Bar, Cell
+} from "recharts";
+import DailyDetailPanel from "../components/DailyDetailPanel";
+import CastSalaryPanel from "../components/CastSalaryPanel";
+import DiaryCountPanel from "../components/DiaryCountPanel";
+import CourseOpPanel from "../components/CourseOpPanel";
+import CastAnalysisPanel from "../components/CastAnalysisPanel";
+import ComparePanel from "../components/ComparePanel";
+import { useSettings } from "../SettingsContext";
+import { canUseFeature } from "../../features";
 
-// --- 仮データ ---
-const summary = { total: 2120000, visitors: 340, unitPrice: 6235, goalRate: 95, goal: 2200000 };
-const dailySummary = { total: 168000, cash: 98000, card: 70000, visitors: 41 };
-const ranking = Array.from({ length: 20 }).map((_, i) => ({
-  rank: i + 1,
-  menu: ["生ビール", "ハンバーグ", "焼き鳥盛り", "ポテトフライ", "枝豆", "サラダ", "寿司盛り", "ジントニック", "日本酒", "グラスワイン", "ウーロン茶"][i % 11],
-  category: i % 3 === 0 ? "ドリンク" : "フード",
-  sales: 1700000 - i * 34000,
-  count: 1300 - i * 34,
-  up: Math.random() > 0.5
-}));
-const categoryColor = { "ドリンク": "#5ad2f6", "フード": "#a3d977", "デザート": "#c7b6ff" };
-const rankColor = [ "#3b82f6", "#16db65", "#ffbc42" ];
-const categoryStructure = [
-  { name: "ドリンク", value: 1080000, fill: "#5ad2f6" },
-  { name: "フード", value: 820000, fill: "#a3d977" },
-  { name: "デザート", value: 220000, fill: "#c7b6ff" }
-];
 
-// --- レイアウト ---
-const layoutDefault = [
-  { i: "summary", x: 0, y: 0, w: 16, h: 3, static: true },
-  { i: "advice", x: 0, y: 3, w: 8, h: 1 },
-  { i: "compare", x: 8, y: 3, w: 8, h: 1 },
-  { i: "tabs", x: 0, y: 4, w: 16, h: 10 },
-];
+const accent = "#6366f1";
+const cyan = "#06b6d4";
+const magenta = "#e879f9";
+const orange = "#ffbc42";
+const green = "#16db65";
+const gradBG = "radial-gradient(circle at 70% 20%, #dbeafe 0%, #f3e8ff 70%, #f1f5f9 100%)";
 
-const STORAGE_KEY = "reon-dashboard-layout-v4";
-function saveLayoutToStorage(layout) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(layout));
-}
-function getLayoutFromStorage() {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    return saved ? JSON.parse(saved) : layoutDefault;
-  } catch {
-    return layoutDefault;
+// 月リスト生成
+function getMonthOptions() {
+  const arr = [];
+  const now = new Date();
+  const startYear = 2024;
+  const endYear = now.getFullYear();
+  for (let y = startYear; y <= endYear; y++) {
+    for (let m = 1; m <= 12; m++) {
+      if (y === endYear && m > now.getMonth() + 1) break;
+      arr.push(`${y}-${String(m).padStart(2, "0")}`);
+    }
   }
+  return arr.reverse();
 }
 
-// --- 日別サマリーカード ---
-function DailySummaryCards({ total, cash, card, visitors }) {
-  const items = [
-    { label: "総売上", value: `${total.toLocaleString()}円`, color: "#4339f2", bg: "#f4f8ff" },
-    { label: "現金売上", value: `${cash.toLocaleString()}円`, color: "#16db65", bg: "#eafff2" },
-    { label: "カード売上", value: `${card.toLocaleString()}円`, color: "#ffbc42", bg: "#fffbe0" },
-    { label: "来店人数", value: `${visitors}人`, color: "#7b40f6", bg: "#f5f0ff" }
+// --- サマリー上部 ---
+function SummaryHeader({
+  dailyReports, forecast = 0, goal = 0, courseData = [],
+  unitPrice = 0, visitors = 0, cancelRate = 0, selectedMonth
+}) {
+  const today = new Date();
+  const [year, month] = selectedMonth.split("-");
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const sumActual = dailyReports.reduce((sum, v) => sum + (v.value || 0), 0);
+  const sumCash = dailyReports.reduce((sum, v) => sum + (v.cash || 0), 0);
+  const sumCard = dailyReports.reduce((sum, v) => sum + (v.card || 0), 0);
+  const sumPayPay = dailyReports.reduce((sum, v) => sum + (v.paypay || 0), 0);
+  const avg = daysInMonth > 0 ? sumActual / daysInMonth : 0;
+
+  const actuals = Array.from({ length: daysInMonth }, (_, i) =>
+    dailyReports[i]?.value ?? 0
+  );
+  const graphData = Array.from({ length: daysInMonth }, (_, i) => ({
+    name: `${i + 1}日`,
+    actual: actuals[i] ?? 0,
+  }));
+
+  const goalRate = goal > 0 ? Math.round((sumActual / goal) * 100) : 0;
+  const salesCards = [
+    { label: "売上合計", value: sumActual, icon: <Favorite sx={{ color: green }} />, color: green },
+    { label: "現金売上", value: sumCash, icon: <Favorite sx={{ color: green }} />, color: green },
+    { label: "カード売上", value: sumCard, icon: <CreditCard sx={{ color: orange }} />, color: orange },
+    { label: "PayPay", value: sumPayPay, icon: <LocalOffer sx={{ color: cyan }} />, color: cyan },
+    { label: "今月達成率", value: `${goalRate}%`, icon: <EmojiEvents sx={{ color: magenta }} />, color: magenta, progress: true },
   ];
-  return (
-    <Box
-      sx={{
-        width: "100%",
-        display: "flex",
-        gap: 3,
-        mt: 0,
-        mb: 3,
-        px: 0,
-        '@media (max-width: 1000px)': { flexWrap: "wrap", gap: 2 }
-      }}
-    >
-      {items.map((item) => (
-        <Paper
-          key={item.label}
-          sx={{
-            flex: 1,
-            minWidth: 160,
-            maxWidth: 250,
-            p: 3,
-            bgcolor: item.bg,
-            borderRadius: 4,
-            boxShadow: 3,
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <Typography sx={{ color: item.color, fontWeight: "bold", fontSize: 18, mb: 0.5 }}>
-            {item.label}
-          </Typography>
-          <Typography sx={{ fontSize: 28, fontWeight: "bold", color: "#222" }}>
-            {item.value}
-          </Typography>
-        </Paper>
-      ))}
-    </Box>
-  );
-}
 
-// --- パネル類 ---
-function DailyDetail() {
-  // 仮日報データ
-  const [selectedDate, setSelectedDate] = useState("2024-05-21");
-  const fakeData = {
-    date: selectedDate,
-    sales: [
-      { menu: "生ビール", count: 120, price: 550, total: 66000 },
-      { menu: "ハイボール", count: 15, price: 900, total: 13500 },
-      { menu: "焼き鳥盛り", count: 24, price: 680, total: 16320 },
-      { menu: "サラダ", count: 19, price: 500, total: 9500 }
-    ],
-    expenses: [
-      { name: "食材費", amount: 20000 },
-      { name: "備品", amount: 3800 }
-    ],
-    pay: [
-      { name: "山田花子", amount: 12000 },
-      { name: "田中太郎", amount: 9500 }
-    ],
-    memo: "イベントデー。雨で客足やや少なめ。"
-  };
-  const totalSales = fakeData.sales.reduce((a, b) => a + b.total, 0);
-  const totalExpenses = fakeData.expenses.reduce((a, b) => a + b.amount, 0);
-  const totalPay = fakeData.pay.reduce((a, b) => a + b.amount, 0);
-  const [calOpen, setCalOpen] = useState(false);
-
-  return (
-    <Box sx={{
-      width: "100%", minHeight: 480, bgcolor: "transparent",
-      display: "flex", flexDirection: "column", gap: 3, p: 0,
-    }}>
-      {/* 日付＆ナビゲーション */}
-      <Box sx={{
-        display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 2, mb: 1,
-      }}>
-        <Button size="small" variant="text" sx={{ minWidth: 36, color: "#666" }}>前日</Button>
-        <Button
-          size="small"
-          sx={{
-            bgcolor: "#4339f2", color: "#fff", borderRadius: 2, fontWeight: "bold", px: 2, boxShadow: 1, "&:hover": { bgcolor: "#3127bb" }
-          }}
-          onClick={() => setCalOpen(v => !v)}
-        >
-          {selectedDate}
-        </Button>
-        <Button size="small" variant="text" sx={{ minWidth: 36, color: "#666" }}>翌日</Button>
-      </Box>
-      {calOpen && (
-        <Box sx={{ mb: 2, display: "flex", justifyContent: "center" }}>
-          <input
-            type="date"
-            value={selectedDate}
-            onChange={e => { setSelectedDate(e.target.value); setCalOpen(false); }}
-            style={{
-              fontSize: 18, padding: "8px 18px", border: "1.5px solid #4339f2", borderRadius: 6
-            }}
-          />
-        </Box>
-      )}
-
-      {/* --- サマリーカード挿入 --- */}
-      <DailySummaryCards {...dailySummary} />
-
-      {/* ↓この下にいつもの詳細 */}
-      <Box sx={{
-        bgcolor: "rgba(248,250,255,0.95)",
-        borderRadius: 6, boxShadow: 4, p: 4, mb: 1,
-        width: "100%", minHeight: 200, display: "flex", flexDirection: "column", justifyContent: "space-between"
-      }}>
-        <Typography sx={{
-          fontWeight: "bold", fontSize: 22, color: "#4339f2", letterSpacing: 1, mb: 2
-        }}>
-          日別売上詳細
-        </Typography>
-        <table style={{
-          width: "100%", fontSize: 16, borderCollapse: "collapse", marginBottom: 0
-        }}>
-          <thead>
-            <tr style={{ background: "#e3e6ff" }}>
-              <th style={{ textAlign: "left", padding: "4px 16px" }}>商品名</th>
-              <th style={{ textAlign: "right" }}>数</th>
-              <th style={{ textAlign: "right" }}>単価</th>
-              <th style={{ textAlign: "right" }}>金額</th>
-            </tr>
-          </thead>
-          <tbody>
-            {fakeData.sales.map((row, idx) => (
-              <tr key={row.menu} style={{
-                background: idx % 2 === 0 ? "#f8fafd" : "#f4f6fc"
-              }}>
-                <td style={{ padding: "4px 16px", fontWeight: 500 }}>{row.menu}</td>
-                <td style={{ textAlign: "right", fontWeight: 500 }}>{row.count}</td>
-                <td style={{ textAlign: "right" }}>{row.price.toLocaleString()}円</td>
-                <td style={{ textAlign: "right", fontWeight: 700, color: "#4339f2" }}>{row.total.toLocaleString()}円</td>
-              </tr>
-            ))}
-            <tr style={{ background: "#e5e7fa" }}>
-              <td colSpan={3} style={{ textAlign: "right", fontWeight: "bold", padding: "6px 16px" }}>売上合計</td>
-              <td style={{ textAlign: "right", fontWeight: "bold", color: "#3b82f6", fontSize: 18 }}>{totalSales.toLocaleString()}円</td>
-            </tr>
-          </tbody>
-        </table>
-      </Box>
-
-      {/* 下段：3分割カード */}
-      <Box sx={{
-        display: "flex", gap: 2, mt: 1,
-        width: "100%",
-      }}>
-        {/* 経費詳細 */}
-        <Paper sx={{
-          flex: 1, p: 3, borderRadius: 6, boxShadow: 2,
-          minWidth: 180, minHeight: 110, display: "flex", flexDirection: "column", bgcolor: "#f4fef7"
-        }}>
-          <Typography sx={{ fontWeight: "bold", color: "#16db65", mb: 1 }}>経費詳細</Typography>
-          {fakeData.expenses.map((row, idx) => (
-            <Box key={row.name} sx={{ display: "flex", justifyContent: "space-between", fontSize: 15, mb: 0.5 }}>
-              <span>{row.name}</span>
-              <span style={{ fontWeight: 700 }}>{row.amount.toLocaleString()}円</span>
-            </Box>
-          ))}
-          <Divider sx={{ my: 1 }} />
-          <Box sx={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", color: "#16db65" }}>
-            <span>合計</span>
-            <span>{totalExpenses.toLocaleString()}円</span>
-          </Box>
-        </Paper>
-        {/* 日払い */}
-        <Paper sx={{
-          flex: 1, p: 3, borderRadius: 6, boxShadow: 2,
-          minWidth: 180, minHeight: 110, display: "flex", flexDirection: "column", bgcolor: "#fff4fa"
-        }}>
-          <Typography sx={{ fontWeight: "bold", color: "#ff89bb", mb: 1 }}>日払い</Typography>
-          {fakeData.pay.map((row, idx) => (
-            <Box key={row.name} sx={{ display: "flex", justifyContent: "space-between", fontSize: 15, mb: 0.5 }}>
-              <span>{row.name}</span>
-              <span style={{ fontWeight: 700 }}>{row.amount.toLocaleString()}円</span>
-            </Box>
-          ))}
-          <Divider sx={{ my: 1 }} />
-          <Box sx={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", color: "#ff89bb" }}>
-            <span>合計</span>
-            <span>{totalPay.toLocaleString()}円</span>
-          </Box>
-        </Paper>
-        {/* メモ */}
-        <Paper sx={{
-          flex: 2, p: 3, borderRadius: 6, boxShadow: 2,
-          minWidth: 220, minHeight: 110, bgcolor: "#f6f7fa"
-        }}>
-          <Typography sx={{ fontWeight: "bold", color: "#7b40f6", mb: 1 }}>メモ</Typography>
-          <Typography fontSize={15}>{fakeData.memo}</Typography>
-        </Paper>
-      </Box>
-    </Box>
-  );
-}
-
-function Ranking() {
   return (
     <Paper sx={{
-      p: 2, borderRadius: 4, boxShadow: 4, height: "100%", minHeight: 320, display: "flex", flexDirection: "column", bgcolor: "#f3f8ff"
+      p: 3, mb: 3, borderRadius: 3, position: "relative", boxShadow: 7, display: "flex", gap: 3,
+      background: "rgba(255,255,255,0.97)", alignItems: "stretch", minHeight: 320
     }}>
-      <Box className="panel-header" sx={{ fontWeight: "bold", color: "#7b40f6", mb: 1, cursor: "move", fontSize: 18 }}>
-        月間メニューランキング
+      {/* 左：売上グラフ */}
+      <Box sx={{ width: "60%", minWidth: 340, pt: 1 }}>
+        <Typography fontWeight={900} fontSize={19} color={cyan} mb={1.5} letterSpacing={1.1}>
+          月間売上グラフ
+        </Typography>
+        <ResponsiveContainer width="100%" height={190}>
+          <LineChart data={graphData}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="name" fontSize={12} />
+            <YAxis fontSize={13} />
+            <Tooltip formatter={v => v ? `${Number(v).toLocaleString()}円` : "-"} />
+            <Legend />
+            <Line
+              type="monotone"
+              dataKey="actual"
+              name="実績"
+              stroke={cyan}
+              strokeWidth={3}
+              dot={{ r: 4 }}
+              isAnimationActive={false}
+              connectNulls
+            />
+          </LineChart>
+        </ResponsiveContainer>
+        <Box mt={1.3} mb={0.5} sx={{ textAlign: "left" }}>
+          <TrendingUp sx={{ color: cyan, mr: 1 }} />
+          <span style={{ fontWeight: 900, fontSize: 19, color: cyan }}>
+            見込み額 {forecast.toLocaleString()}円
+          </span>
+        </Box>
+        <Typography fontWeight={900} fontSize={16} color={magenta} mt={2} mb={1}>
+          コース別本数グラフ
+        </Typography>
+        <ResponsiveContainer width="100%" height={200}>
+          <BarChart data={courseData}>
+            <XAxis dataKey="name" fontSize={10} />
+            <YAxis fontSize={11} />
+            <Tooltip formatter={v => v + "本"} />
+            <Bar dataKey="count" fill={magenta}>
+              {courseData.map((entry, i) => (
+                <Cell key={`cell-${i}`} fill={i % 2 ? cyan : magenta} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
       </Box>
-      <Box sx={{ flex: 1, overflowY: "auto", maxHeight: "60vh" }}>
-        <table style={{ width: "100%", fontSize: 14, borderSpacing: 0 }}>
-          <thead>
-            <tr style={{ background: "#e5e4f7" }}>
-              <th style={{ textAlign: "left", padding: "4px 8px" }}>順位</th>
-              <th style={{ textAlign: "left" }}>メニュー</th>
-              <th>カテゴリ</th>
-              <th>売上</th>
-              <th>注文数</th>
-              <th>変動</th>
-            </tr>
-          </thead>
-          <tbody>
-            {ranking.map((row, idx) => (
-              <tr key={row.menu + row.rank}
-                style={{
-                  background: idx === 0 ? "#e3f1fd" : idx === 1 ? "#e0ffe8" : idx === 2 ? "#fff7e0" : undefined
-                }}>
-                <td style={{ color: rankColor[idx] || "#888", fontWeight: "bold", padding: "2px 8px" }}>{row.rank}</td>
-                <td>{row.menu}</td>
-                <td>
-                  <span style={{
-                    background: categoryColor[row.category],
-                    color: "#fff", borderRadius: 12, padding: "2px 10px", fontSize: 12
-                  }}>{row.category}</span>
-                </td>
-                <td style={{ color: idx < 3 ? rankColor[idx] : "#333" }}>{row.sales.toLocaleString()}</td>
-                <td>{row.count}</td>
-                <td>
-                  <span style={{
-                    color: row.up ? "#f39c12" : "#e74c3c", fontWeight: "bold"
-                  }}>
-                    {row.up ? <ArrowUpward fontSize="small" /> : <ArrowDownward fontSize="small" />}
-                  </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </Box>
-    </Paper>
-  );
-}
-
-function GraphPanel() {
-  return (
-    <Paper sx={{ p: 2, borderRadius: 4, boxShadow: 4, height: "100%", bgcolor: "#f8f3fd" }}>
-      <Box className="panel-header" sx={{ fontWeight: "bold", color: "#ab47bc", mb: 1, cursor: "move", fontSize: 18 }}>
-        月間売上構成グラフ
-      </Box>
-      <Typography color="text.secondary" fontSize={13} align="center">[円グラフ or 棒グラフ]</Typography>
-      <Box sx={{ display: "flex", justifyContent: "center", mt: 3 }}>
-        {categoryStructure.map((c) => (
-          <Box key={c.name} sx={{
-            mx: 1, px: 2, py: 1, bgcolor: c.fill, color: "#fff", borderRadius: 2, fontWeight: "bold"
-          }}>{c.name}：{c.value.toLocaleString()}円</Box>
+      {/* 右：売上カード */}
+      <Box sx={{ flex: 1, display: "flex", flexDirection: "column", gap: 1.2 }}>
+        {salesCards.map(card => (
+          <Card key={card.label} sx={{
+            position: "relative", px: 2.5, py: 1.6, mb: 0.8, minHeight: 54,
+            display: "flex", alignItems: "center", borderRadius: 2, boxShadow: 2,
+            background: "#fff"
+          }}>
+            <Box sx={{ fontSize: 33, mr: 2, color: card.color }}>
+              {card.icon}
+            </Box>
+            <Box>
+              <Typography fontSize={16} fontWeight={700} color={card.color}>{card.label}</Typography>
+              <Typography fontSize={21} fontWeight={900} sx={{ color: "#2a2a2a" }}>
+                {card.progress
+                  ? (
+                    <>
+                      {card.value}
+                      <LinearProgress
+                        variant="determinate"
+                        value={parseInt(card.value)}
+                        sx={{
+                          mt: 0.7, height: 9, borderRadius: 7,
+                          [`& .MuiLinearProgress-bar`]: {
+                            background: `linear-gradient(90deg,${magenta} 0%,${cyan} 100%)`
+                          }
+                        }}
+                      />
+                    </>
+                  )
+                  : `${Number(card.value).toLocaleString()}円`
+                }
+              </Typography>
+            </Box>
+          </Card>
         ))}
+        <Divider sx={{ my: 1.1 }} />
+        <Box sx={{ display: "flex", gap: 2, justifyContent: "center", alignItems: "flex-end" }}>
+          {/* 来店組数 */}
+          <Box sx={{ flex: 1, textAlign: "center" }}>
+            <Typography fontSize={14.5} color={cyan} fontWeight={700}>来店組数</Typography>
+            <Typography fontSize={20} fontWeight={900}>{visitors}組</Typography>
+          </Box>
+          {/* 客単価 */}
+          <Box sx={{ flex: 1, textAlign: "center" }}>
+            <Typography fontSize={14.5} color={magenta} fontWeight={700}>客単価</Typography>
+            <Typography fontSize={20} fontWeight={900}>{unitPrice.toLocaleString()}円</Typography>
+          </Box>
+          {/* キャンセル率 */}
+          <Box sx={{ flex: 1, textAlign: "center" }}>
+            <Typography fontSize={14.5} color="#ff0000" fontWeight={700}>キャンセル率</Typography>
+            <Typography fontSize={20} fontWeight={900}>{cancelRate}%</Typography>
+          </Box>
+        </Box>
       </Box>
     </Paper>
   );
 }
 
-function SearchPanel() {
-  return (
-    <Paper sx={{ p: 2, borderRadius: 4, boxShadow: 4, height: "100%", bgcolor: "#eefbfb" }}>
-      <Box className="panel-header" sx={{ fontWeight: "bold", color: "#2fbfdc", mb: 1, cursor: "move", fontSize: 18 }}>メニュー検索</Box>
-      <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
-        <Search color="action" />
-        <input placeholder="キーワード" style={{
-          flex: 1, border: "none", outline: "none", background: "none", fontSize: 16
-        }} />
-      </Box>
-      <Typography color="text.secondary" fontSize={12} sx={{ mt: 2 }}>
-        ※キーワードでメニューやカテゴリを検索できます
-      </Typography>
-    </Paper>
-  );
-}
-
-function AdvicePanel() {
-  return (
-    <Paper sx={{ p: 2, bgcolor: "#f8f5ff", borderRadius: 4, boxShadow: 4, height: "100%" }}>
-      <Box className="panel-header" sx={{ fontWeight: "bold", color: "#a96fff", mb: 1, cursor: "move", fontSize: 18 }}>
-        AIアドバイス
-      </Box>
-      <Typography variant="body2" fontSize={15}>
-        <b>🍺生ビール</b>が前年比+18%絶好調。22時台の売上はSNS強化が有効。週末は<b>デザート</b>増加傾向。
-      </Typography>
-    </Paper>
-  );
-}
-
-function ComparePanel() {
-  return (
-    <Paper sx={{ p: 2, bgcolor: "#e0e7ff", borderRadius: 4, boxShadow: 4, height: "100%" }}>
-      <Box className="panel-header" sx={{ fontWeight: "bold", color: "#388e3c", mb: 1, cursor: "move", fontSize: 18 }}>
-        前月/前年比較
-      </Box>
-      <Typography fontSize={16}>前月比 <b style={{ color: "#388e3c" }}>+8%</b> ／ 前年比 <b style={{ color: "#388e3c" }}>+22%</b></Typography>
-    </Paper>
-  );
-}
-
-// ---- メイン ----
+// ==================== メイン ==========================
 export default function SalesDashboard() {
-  const [layout, setLayout] = useState(getLayoutFromStorage());
   const [tab, setTab] = useState(0);
+  const { currentStoreId, goal } = useSettings();
 
-  const handleLayoutChange = (newLayout) => {
-    setLayout(newLayout);
-    saveLayoutToStorage(newLayout);
-  };
-  const handleReset = () => {
-    setLayout(layoutDefault);
-    saveLayoutToStorage(layoutDefault);
-  };
+  // 月リストはstateで管理
+  const [monthOptions, setMonthOptions] = useState([]);
+  const [selectedMonth, setSelectedMonth] = useState("");
 
-  // タブ順指定
-  const tabs = [
-    { label: "日別売上詳細", panel: <DailyDetail /> },
-    { label: "月間メニューランキング", panel: <Ranking /> },
-    { label: "月間売上構成グラフ", panel: <GraphPanel /> },
-    { label: "メニュー検索", panel: <SearchPanel /> },
-  ];
+  // 各種データ
+  const [dailyReports, setDailyReports] = useState([]);
+  const [reservationsMonth, setReservationsMonth] = useState([]);
+  const [visitors, setVisitors] = useState(0);
+  const [courseData, setCourseData] = useState([]);
+  const [cancelRate, setCancelRate] = useState(0);
+  const [castList, setCastList] = useState([]);
+
+  const [goalFromDB, setGoalFromDB] = useState(0);
+  useEffect(() => {
+    if (!currentStoreId) return;
+    supabase.from("settings")
+      .select("value")
+      .eq("store_id", currentStoreId)
+      .eq("key", "sales_goal")
+      .maybeSingle()
+      .then(({ data }) => setGoalFromDB(Number(data?.value || 0)));
+  }, [currentStoreId]);
+
+  const [userRank, setUserRank] = useState("C"); // デフォルトはCなど
+
+  useEffect(() => {
+    if (!currentStoreId) return;
+    async function fetchStoreInfo() {
+      const { data, error } = await supabase
+        .from("stores")
+        .select("rank")
+        .eq("store_id", currentStoreId)
+        .single();
+      if (data && data.rank) setUserRank(data.rank);
+    }
+    fetchStoreInfo();
+  }, [currentStoreId]);
+
+  // --- キャスト一覧を取得 ---
+  useEffect(() => {
+    if (!currentStoreId) return;
+    async function fetchCasts() {
+      const { data, error } = await supabase
+        .from("casts")
+        .select("id, name")
+        .eq("store_id", currentStoreId);
+      setCastList(data || []);
+    }
+    fetchCasts();
+  }, [currentStoreId]);
+
+  // ★ 1. 月リストだけ最初に全件取得（daily_reportsから）
+  useEffect(() => {
+    async function fetchMonthList() {
+      if (!currentStoreId) return;
+      const { data, error } = await supabase
+        .from("daily_reports")
+        .select("report_date")
+        .eq("store_id", currentStoreId);
+      if (error || !data) return;
+      // YYYY-MMだけ抽出してユニーク・降順
+      const monthSet = new Set(
+        data
+          .map(row => row.report_date && row.report_date.slice(0, 7))
+          .filter(Boolean)
+      );
+      const sorted = Array.from(monthSet).sort().reverse();
+      setMonthOptions(sorted);
+      // まだ未選択ならデフォルトセット
+      if (!selectedMonth && sorted.length) setSelectedMonth(sorted[0]);
+    }
+    fetchMonthList();
+    // eslint-disable-next-line
+  }, [currentStoreId]);
+
+  // ★ 2. 月選択が変わった時の売上データ取得（ここはそのまま）
+  useEffect(() => {
+    if (!currentStoreId || !selectedMonth) return;
+    async function fetchReservations() {
+      const [year, month] = selectedMonth.split("-");
+      const lastDay = new Date(Number(year), Number(month), 0).getDate();
+      const fromDate = `${year}-${month}-01T00:00:00`;
+      const toDate = `${year}-${month}-${String(lastDay).padStart(2, "0")}T23:59:59`;
+
+      // 日付配列を必ず先に作成
+      const days = Array.from({ length: lastDay }, (_, i) => {
+        return `${year}-${month}-${String(i + 1).padStart(2, "0")}`;
+      });
+
+      // 日次レポート（給料明細・利益など含む）
+      const { data: dailyReportsDataRaw } = await supabase
+        .from("daily_reports")
+        .select("*")
+        .eq("store_id", currentStoreId)
+        .gte("report_date", fromDate.slice(0, 10))
+        .lte("report_date", toDate.slice(0, 10));
+
+      // 予約（キャンセル除く）
+      const { data: reservations } = await supabase
+        .from("reservations")
+        .select("*")
+        .eq("store_id", currentStoreId)
+        .gte("datetime", fromDate)
+        .lte("datetime", toDate)
+        .not("kubun", "ilike", "%キャンセル%");
+
+      // 予約（キャンセル含む）
+      const { data: allReservations } = await supabase
+        .from("reservations")
+        .select("id, kubun, datetime, price, payment_method")
+        .eq("store_id", currentStoreId)
+        .gte("datetime", fromDate)
+        .lte("datetime", toDate);
+
+      // --- 日次レポートデータと予約データを合成 ---
+      const daily = days.map(dateStr => {
+        // 該当日のレポート
+        const report = (dailyReportsDataRaw || []).find(r =>
+          (r.report_date || r.date) === dateStr
+        ) || {};
+
+        let diary_logs = [];
+        if (report.diary_logs) {
+          try {
+            diary_logs = typeof report.diary_logs === "string"
+              ? JSON.parse(report.diary_logs)
+              : report.diary_logs;
+          } catch {
+            diary_logs = [];
+          }
+        }
+
+        // 予約（キャンセル除く）
+        const thisDay = (reservations || []).filter(r => r.datetime.slice(0, 10) === dateStr);
+        // 予約（キャンセル含む）
+        const allThisDay = (allReservations || []).filter(r => r.datetime.slice(0, 10) === dateStr);
+        const cancels = allThisDay.filter(r => r.kubun && r.kubun.includes("キャンセル")).length;
+        const total = allThisDay.length;
+        const cancel_rate = total ? Math.round((cancels / total) * 100) : 0;
+
+        return {
+          date: dateStr,
+          // 売上・決済は予約データが優先、それ以外は日次レポートから
+          value: thisDay.reduce((acc, r) => acc + Number(r.price || 0), 0),
+          cash: thisDay
+            .filter(r => ["現金", "cash"].includes(r.payment_method))
+            .reduce((acc, r) => acc + Number(r.price || 0), 0),
+          card: thisDay
+            .filter(r => ["カード", "card"].includes(r.payment_method))
+            .reduce((acc, r) => acc + Number(r.price || 0), 0),
+          paypay: thisDay
+            .filter(r => ["PayPay", "paypay", "ペイペイ"].includes(r.payment_method))
+            .reduce((acc, r) => acc + Number(r.price || 0), 0),
+          visitors: thisDay.length,
+          cancel_rate,
+          // 日次レポート特有のフィールド（ここを絶対に落とさない！）
+          cast_salary: report.cast_salary ?? null,
+          cash_balance: report.cash_balance ?? null,
+          diary_logs,
+          // 他必要なカラムをここで
+        };
+      });
+      setDailyReports(daily);
+      setReservationsMonth(Array.isArray(reservations) ? reservations : []);
+
+      // 月全体キャンセル率
+      if (allReservations) {
+        const total = allReservations.length;
+        const cancels = allReservations.filter(r => r.kubun && r.kubun.includes("キャンセル")).length;
+        setCancelRate(total ? Math.round((cancels / total) * 100) : 0);
+      } else {
+        setCancelRate(0);
+      }
+      setVisitors(Array.isArray(reservations) ? reservations.length : 0);
+      console.log(dailyReports.map(r => ({
+        date: r.date,
+        diary_logs: r.diary_logs
+      })));
+    }
+    fetchReservations();
+  }, [currentStoreId, selectedMonth]);
+
+
+  // --- コース別本数グラフ ---
+  useEffect(() => {
+    if (!currentStoreId || !selectedMonth) return;
+    async function fetchCourseCounts() {
+      const [year, month] = selectedMonth.split("-");
+      const lastDay = new Date(Number(year), Number(month), 0).getDate();
+      const fromDate = `${year}-${month}-01T00:00:00`;
+      const toDate = `${year}-${month}-${String(lastDay).padStart(2, "0")}T23:59:59`;
+      const { data, error } = await supabase
+        .from("reservations")
+        .select("course")
+        .eq("store_id", currentStoreId)
+        .gte("datetime", fromDate)
+        .lte("datetime", toDate)
+        .not("kubun", "ilike", "%キャンセル%");
+      if (error) {
+        setCourseData([]);
+        return;
+      }
+      const countMap = {};
+      data.forEach(row => {
+        const name = row.course || "未設定";
+        countMap[name] = (countMap[name] || 0) + 1;
+      });
+      const arr = Object.entries(countMap)
+        .filter(([name, cnt]) => name && cnt > 0)
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => b.count - a.count);
+      setCourseData(arr);
+    }
+    fetchCourseCounts();
+  }, [currentStoreId, selectedMonth]);
+
+
+  // サマリー用
+  const today = new Date();
+  const viewingYear = Number(selectedMonth.split("-")[0]);
+  const viewingMonth = Number(selectedMonth.split("-")[1]);
+  const isCurrentMonth = (today.getFullYear() === viewingYear && (today.getMonth() + 1) === viewingMonth);
+  const currentDay = isCurrentMonth ? today.getDate() : new Date(viewingYear, viewingMonth, 0).getDate();
+  const sumTotal = dailyReports.reduce((sum, r) => sum + (r.value || 0), 0);
+  const unitPrice = visitors ? Math.round(sumTotal / visitors) : 0;
+  const totalDays = new Date(viewingYear, viewingMonth, 0).getDate();
+  const averageDaily = currentDay > 0 ? Math.round(sumTotal / currentDay) : 0;
+  const forecast = averageDaily * totalDays;
+  const goalNum = Number(goal || 0);
+
+  // タブ
+  const tabs = useMemo(() => [
+    { label: "日別売上詳細", panel: <DailyDetailPanel dailyReports={dailyReports} reservations={reservationsMonth} castList={castList} /> },
+    { label: "キャスト別給料額", panel: <CastSalaryPanel dailyReports={dailyReports} castList={castList} reservationsMonth={reservationsMonth} /> },
+    ...(canUseFeature("diaryTab", userRank) ? [
+      { label: "写メ日記本数", panel: <DiaryCountPanel dailyReports={dailyReports} shopdir={currentStoreId} extraCookies={{}} /> }
+    ] : []),
+    { label: "コース・OP・指名分析", panel: <CourseOpPanel reservationsMonth={reservationsMonth} selectedMonth={selectedMonth} storeId={currentStoreId} /> },
+    ...(["A", "S"].includes(userRank)
+      ? [{
+        label: "在籍キャスト分析",
+        panel: (
+          <CastAnalysisPanel
+            reservationsMonth={reservationsMonth}
+            storeId={currentStoreId}
+            selectedMonth={selectedMonth}
+            canUseCastDiaryAnalysis={canUseFeature("castDiaryAnalysis", userRank)}
+          />
+        )
+      }]
+      : []),
+    { label: "前月・前年比較", panel: <ComparePanel storeId={currentStoreId} /> }
+  ], [dailyReports, reservationsMonth, castList, currentStoreId, selectedMonth, userRank]);
+
+  // ←これ追加！
+  useEffect(() => {
+    if (tab >= tabs.length) {
+      setTab(0);
+    }
+  }, [tabs.length]);
 
   return (
     <Box sx={{
-      width: "100vw", minHeight: "100vh", p: 0, pt: 0,
-      bgcolor: "linear-gradient(135deg,#e0e7ff 0%,#e0f2fe 100%)",
+      p: { xs: 1, md: 3 },
+      width: "100%",
+      minHeight: "100vh",
+      bgcolor: gradBG,
+      borderRadius: "0 0 32px 32px",
+      overflow: "hidden"
     }}>
-      <Box sx={{ display: "flex", justifyContent: "flex-end", mb: 1 }}>
-        <Button variant="outlined" onClick={handleReset} size="small" sx={{ fontSize: 12 }}>レイアウトリセット</Button>
-      </Box>
-      <GridLayout
-        className="layout"
-        layout={layout}
-        cols={16}
-        rowHeight={90}
-        width={1600}
-        isDraggable
-        isResizable
-        draggableHandle=".panel-header"
-        onLayoutChange={handleLayoutChange}
-        style={{
-          minHeight: 600,
-          marginTop: 0, 
-          paddingTop: 0,
-        }}
-      >
-        {/* サマリー（月次用・タブ共通ヘッダ） */}
-        <div key="summary">
-          <Paper
-            sx={{
-              p: 2,
-              mt: 0,
-              mb: 0,
-              bgcolor: "rgba(245,247,255,0.99)",
-              borderRadius: 6,
-              boxShadow: 8,
-              height: "auto",
-              overflow: "visible",
-            }}
-          >
-            <Box sx={{ fontWeight: "bold", fontSize: 28, color: "#4339f2", mb: 2, letterSpacing: 2 }}>
-              <Timeline sx={{ mr: 2, color: "#4339f2", fontSize: 38, verticalAlign: "middle" }} />
-              月間売上サマリー
-            </Box>
-            <Box
-              sx={{
-                width: "100%",
-                overflow: "hidden",
-                boxSizing: "border-box",
-                display: "flex",
-                flexWrap: "wrap",
-                gap: 2,
-                mb: 2,
-                alignItems: "stretch",
-                '@media (max-width: 1100px)': {
-                  gap: 1,
-                },
-              }}
-            >
-              {/* 各カード幅制限 */}
-              <Card sx={{
-                flex: "1 1 200px",
-                minWidth: 180,
-                maxWidth: 320,
-                bgcolor: "#f0f7ff",
-                boxShadow: 3,
-                borderRadius: 3,
-                m: 0,
-              }}>
-                <CardContent>
-                  <Typography sx={{ fontSize: 16, color: "#4339f2" }}>売上合計</Typography>
-                  <Typography sx={{ fontWeight: "bold", fontSize: 28 }}>{summary.total.toLocaleString()}円</Typography>
-                </CardContent>
-              </Card>
-              <Card sx={{
-                flex: "1 1 200px",
-                minWidth: 180,
-                maxWidth: 320,
-                bgcolor: "#e0ffe0",
-                boxShadow: 3,
-                borderRadius: 3,
-                m: 0,
-              }}>
-                <CardContent>
-                  <Typography sx={{ fontSize: 16, color: "#22bb22" }}>来店数</Typography>
-                  <Typography sx={{ fontWeight: "bold", fontSize: 28 }}>{summary.visitors}人</Typography>
-                </CardContent>
-              </Card>
-              <Card sx={{
-                flex: "1 1 200px",
-                minWidth: 180,
-                maxWidth: 320,
-                bgcolor: "#fffbe0",
-                boxShadow: 3,
-                borderRadius: 3,
-                m: 0,
-              }}>
-                <CardContent>
-                  <Typography sx={{ fontSize: 16, color: "#ffbc42" }}>客単価</Typography>
-                  <Typography sx={{ fontWeight: "bold", fontSize: 28 }}>{summary.unitPrice.toLocaleString()}円</Typography>
-                </CardContent>
-              </Card>
-              <Card sx={{
-                flex: "1 1 240px",
-                minWidth: 220,
-                maxWidth: 340,
-                bgcolor: "#e3f1fd",
-                boxShadow: 3,
-                borderRadius: 3,
-                m: 0,
-              }}>
-                <CardContent>
-                  <Typography sx={{ fontSize: 16, color: "#4339f2" }}>達成率</Typography>
-                  <Typography sx={{ fontWeight: "bold", fontSize: 28 }}>{summary.goalRate}%</Typography>
-                  <LinearProgress
-                    variant="determinate"
-                    value={summary.goalRate}
-                    sx={{
-                      height: 14, borderRadius: 5, mt: 1,
-                      [`& .MuiLinearProgress-bar`]: {
-                        background: "linear-gradient(90deg,#4339f2 40%,#5ad2f6 100%)"
-                      }
-                    }}
-                  />
-                  <Typography fontSize={12}>
-                    {summary.total.toLocaleString()}円／目標 {summary.goal.toLocaleString()}円
-                  </Typography>
-                </CardContent>
-              </Card>
-            </Box>
-          </Paper>
-        </div>
-        {/* AIアドバイス */}
-        <div key="advice">
-          <AdvicePanel />
-        </div>
-        {/* 前月/前年比較 */}
-        <div key="compare">
-          <ComparePanel />
-        </div>
-        {/* タブ式で下部パネル */}
-        <div key="tabs">
-          <Paper sx={{
-            height: "100%",
-            borderRadius: 6,
-            boxShadow: 8,
-            bgcolor: "#f6f7fa",
-            p: 0,
-            display: "flex",
-            flexDirection: "column"
-          }}>
-            <Tabs
-              value={tab}
-              onChange={(_, v) => setTab(v)}
-              variant="scrollable"
-              scrollButtons="auto"
-              allowScrollButtonsMobile
-              sx={{
-                borderBottom: 1,
-                borderColor: "#e0e7ff",
-                "& .MuiTabs-indicator": {
-                  background: "linear-gradient(90deg,#4339f2 60%,#5ad2f6 100%)"
-                }
-              }}
-            >
-              {tabs.map((t, i) => <Tab key={i} label={t.label} sx={{ fontSize: 16, fontWeight: "bold" }} />)}
-            </Tabs>
-            <Divider />
-            <Box sx={{ flex: 1, overflow: "auto", p: 2 }}>
-              {tabs[tab].panel}
-            </Box>
-          </Paper>
-        </div>
-      </GridLayout>
+      {/* --- ヘッダー --- */}
+      <FormControl size="small" sx={{ minWidth: 120, mr: 2 }}>
+        <InputLabel>月選択</InputLabel>
+        <Select
+          value={selectedMonth}
+          label="月選択"
+          onChange={e => setSelectedMonth(e.target.value)}
+        >
+          {monthOptions.map(m => (
+            <MenuItem key={m} value={m}>{m.replace("-", "年") + "月"}</MenuItem>
+          ))}
+        </Select>
+      </FormControl>
+
+      {/* --- サマリー --- */}
+      <SummaryHeader
+        dailyReports={dailyReports}
+        forecast={forecast}
+        goal={goalFromDB}
+        courseData={courseData}
+        unitPrice={unitPrice}
+        visitors={visitors}
+        cancelRate={cancelRate}
+        selectedMonth={selectedMonth}
+      />
+
+      {/* --- タブパネル --- */}
+      <Paper sx={{
+        mt: 2,
+        borderRadius: 4,
+        boxShadow: 8,
+        bgcolor: "#f6f7fa",
+        p: 0,
+        display: "flex",
+        flexDirection: "column",
+        transition: "box-shadow 0.16s, background 0.14s",
+        '&:hover': { boxShadow: "0 10px 34px #818cf844", background: "#f8fafc" }
+      }}>
+        <Tabs
+          value={tab}
+          onChange={(_, v) => setTab(v)}
+          variant="scrollable"
+          scrollButtons="auto"
+          allowScrollButtonsMobile
+          sx={{
+            borderBottom: 1,
+            borderColor: "#e0e7ff",
+            "& .MuiTabs-indicator": {
+              background: "linear-gradient(90deg,#4339f2 60%,#5ad2f6 100%)"
+            }
+          }}
+        >
+          {tabs.map((t, i) => <Tab key={i} label={t.label} sx={{
+            fontSize: 16, fontWeight: "bold", borderRadius: 4, mx: 0.5, minHeight: 42
+          }} />)}
+        </Tabs>
+        <Divider />
+        <Box sx={{ flex: 1, overflow: "auto", p: 2 }}>
+          {tabs[tab]?.panel ?? null}
+        </Box>
+      </Paper>
     </Box>
   );
 }
