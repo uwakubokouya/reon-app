@@ -2,7 +2,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from .scraper import login_heaven, get_today_diary_counts, get_today_diary_hourly_with_body_and_images as get_today_diary_hourly
+from scraper import login_heaven, get_today_diary_counts, get_today_diary_hourly_with_body_and_images as get_today_diary_hourly
 
 app = FastAPI()
 
