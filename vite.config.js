@@ -6,6 +6,9 @@ export default defineConfig({
   build: {
     outDir: '../dist', // ビルド成果物の出力先
     emptyOutDir: true,
+    rollupOptions: {
+      external: ['electron'],  // electronを外部依存にする
+    },
   },
   plugins: [react()]
 });
